@@ -5802,6 +5802,21 @@ impl Meter {
     }
 }
 
+/// The swap chain's present interval: `VICTORY_PRESENT_SYNC`, 0 by default
+/// (present at once, as before). 1 waits for the vertical blank. Under
+/// Wine a title that presents at once every 33 ms can be composed from a
+/// buffer it is already copying into, which shows as flicker.
+fn present_sync() -> u32 {
+    static ON: OnceLock<u32> = OnceLock::new();
+    *ON.get_or_init(|| {
+        std::env::var("VICTORY_PRESENT_SYNC")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .map(|n| n.min(4))
+            .unwrap_or(0)
+    })
+}
+
 impl Host {
     /// Shows `texture`, which is in `state` (a host state) and stays in it,
     /// as frame `frame` (saved if captures are on). `None` if nothing was
@@ -5909,7 +5924,7 @@ impl Host {
             if let Some((buffer, footprint)) = capture {
                 crate::capture::save_read_back(frame, &buffer, &footprint);
             }
-            let _ = p.swap_chain.Present(0, DXGI_PRESENT(0));
+            let _ = p.swap_chain.Present(present_sync(), DXGI_PRESENT(0));
             p.meter.frame(p.hwnd);
             #[cfg(feature = "diagnostics")]
             return Some(probe.is_some_and(|b| crate::capture::black(&b)));
